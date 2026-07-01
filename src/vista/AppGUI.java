@@ -1,7 +1,7 @@
 package vista;
 
-import excepciones.VoluntariadoException;
 import modelo.*;
+import excepciones.VoluntariadoException;
 import servicio.SistemaGestionEventos;
 import javax.swing.*;
 import javax.swing.table.DefaultTableModel;
@@ -54,7 +54,7 @@ public class AppGUI {
         if (admin != null && admin.getRol() == Enums.RolUsuario.ADMINISTRADOR) cbxRol.addItem(Enums.RolUsuario.COORDINADOR);
         else cbxRol.addItem(Enums.RolUsuario.VOLUNTARIO);
 
-        f.add(new JLabel(" Nombre (Sin números):")); f.add(txtNom);
+        f.add(new JLabel(" Nombre:")); f.add(txtNom);
         f.add(new JLabel(" Cédula (10 dígitos):")); f.add(txtCed);
         f.add(new JLabel(" Usuario:")); f.add(txtUser);
         f.add(new JLabel(" Clave:")); f.add(txtPass);
@@ -75,124 +75,135 @@ public class AppGUI {
 
     private static void mostrarVentanaPrincipal(Usuario u) {
         JFrame f = new JFrame("Panel - " + u.getNombreCompleto() + " (" + u.getRol() + ")");
-        f.setSize(950, 650); f.setLocationRelativeTo(null); f.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
+        f.setSize(1000, 650); f.setLocationRelativeTo(null); f.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
         JTabbedPane tabs = new JTabbedPane();
 
         if (u.getRol() == Enums.RolUsuario.ADMINISTRADOR) {
-            tabs.addTab("Reportes", panelReportes());
+            tabs.addTab("Auditoría y Reportes", panelReportes());
+            tabs.addTab("Gestión de Recursos", panelGestionRequisitosAdmin());
+
             JPanel p = new JPanel(); JButton b = new JButton("Registrar Coordinador");
             b.addActionListener(e -> mostrarRegistro(u)); p.add(b);
-            tabs.addTab("Gestión", p);
+            tabs.addTab("Gestión de Usuarios", p);
+
         } else if (u.getRol() == Enums.RolUsuario.COORDINADOR) {
             tabs.addTab("CRUD Eventos", panelCRUDEventos());
-            tabs.addTab("Recursos/Requisitos", panelRequisitos()); // NUEVA PESTAÑA
+            tabs.addTab("Solicitar Recursos", panelRequisitos());
             tabs.addTab("Fila de Espera", panelInscripciones());
-            tabs.addTab("Tomar Asistencia", panelAsistencia(u));   // NUEVA PESTAÑA
+            tabs.addTab("Tomar Asistencia", panelAsistencia(u));
         } else {
-            tabs.addTab("Cartelera", panelVoluntario(u));
+            tabs.addTab("Cartelera de Eventos", panelVoluntario(u));
         }
         f.add(tabs); f.setVisible(true);
     }
 
-    // --- PANELES PARA EL COORDINADOR ---
+    private static JPanel panelReportes() {
+        JPanel p = new JPanel(new BorderLayout(10, 10));
+        p.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
 
-    private static JPanel panelRequisitos() {
-        JPanel p = new JPanel(new BorderLayout());
+        JPanel pTop = new JPanel(new FlowLayout(FlowLayout.LEFT));
+        pTop.add(new JLabel("Seleccionar Evento para Auditoría: "));
+        JComboBox<Evento> cbxEventos = new JComboBox<>();
+        for (Evento ev : sis.getEventosDisponibles()) cbxEventos.addItem(ev);
+        pTop.add(cbxEventos);
+        p.add(pTop, BorderLayout.NORTH);
 
-        // Formulario Superior
-        JPanel pForm = new JPanel(new GridLayout(3, 4, 5, 5));
-        JTextField txtIdEv = new JTextField();
-        JTextField txtNomReq = new JTextField();
-        JComboBox<TipoRequisito> cbxTipo = new JComboBox<>(TipoRequisito.values());
-        JSpinner spCant = new JSpinner(new SpinnerNumberModel(1, 1, 100, 1));
-        JButton btnGuardar = new JButton("Añadir Requisito");
+        DefaultTableModel mdl = new DefaultTableModel(new String[]{"ID Inscripción", "Voluntario", "Estado Asistencia", "Auditor (Coordinador)"}, 0);
+        JTable t = new JTable(mdl);
+        p.add(new JScrollPane(t), BorderLayout.CENTER);
 
-        pForm.add(new JLabel(" ID Evento:")); pForm.add(txtIdEv);
-        pForm.add(new JLabel(" Recurso (Ej. Palas):")); pForm.add(txtNomReq);
-        pForm.add(new JLabel(" Tipo:")); pForm.add(cbxTipo);
-        pForm.add(new JLabel(" Cantidad:")); pForm.add(spCant);
-        pForm.add(new JLabel()); pForm.add(new JLabel()); pForm.add(new JLabel()); pForm.add(btnGuardar);
+        Runnable actualizarTabla = () -> {
+            mdl.setRowCount(0);
+            Evento evSeleccionado = (Evento) cbxEventos.getSelectedItem();
+            if (evSeleccionado == null) return;
 
-        p.add(pForm, BorderLayout.NORTH);
+            for (Inscripcion ins : sis.getHistorialCompleto()) {
+                if (ins.getEvento().getId() == evSeleccionado.getId() &&
+                        (ins.getEstado() == Enums.EstadoInscripcion.APROBADA || ins.getEstado() == Enums.EstadoInscripcion.ASISTIO)) {
 
-        // Tabla Inferior
-        DefaultTableModel mdl = new DefaultTableModel(new String[]{"Evento", "Recurso", "Tipo", "Cantidad"}, 0);
-        JTable t = new JTable(mdl); p.add(new JScrollPane(t), BorderLayout.CENTER);
+                    String estadoAsistencia = (ins.getEstado() == Enums.EstadoInscripcion.ASISTIO) ? "Sí Asistió" : "Faltó";
+                    String coordinador = "-";
 
-        btnGuardar.addActionListener(e -> {
+                    if (ins.getEstado() == Enums.EstadoInscripcion.ASISTIO) {
+                        for (RegistroAsistencia reg : sis.getRegistrosAsistencia()) {
+                            if (reg.getInscripcionAsociada().getId() == ins.getId()) {
+                                coordinador = reg.getCoordinadorResponsable();
+                                break;
+                            }
+                        }
+                    }
+                    mdl.addRow(new Object[]{ins.getId(), ins.getVoluntario().getNombreCompleto(), estadoAsistencia, coordinador});
+                }
+            }
+        };
+
+        cbxEventos.addActionListener(e -> actualizarTabla.run());
+        JButton btnRefresh = new JButton("Actualizar Reporte");
+        btnRefresh.addActionListener(e -> actualizarTabla.run());
+        p.add(btnRefresh, BorderLayout.SOUTH);
+
+        actualizarTabla.run();
+        return p;
+    }
+
+    private static JPanel panelGestionRequisitosAdmin() {
+        JPanel p = new JPanel(new BorderLayout(10, 10));
+        p.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
+
+        DefaultTableModel mdl = new DefaultTableModel(new String[]{"ID Req.", "Evento", "Recurso", "Tipo", "Solicitado", "Estado", "Autorizado"}, 0);
+        JTable t = new JTable(mdl);
+        p.add(new JScrollPane(t), BorderLayout.CENTER);
+
+        JPanel pBotones = new JPanel(new FlowLayout(FlowLayout.CENTER, 20, 10));
+        JButton btnAprobar = new JButton("Autorizar (Total/Parcial)");
+        JButton btnRechazar = new JButton("Rechazar Solicitud");
+        JButton btnRefrescar = new JButton("Actualizar Tabla");
+
+        pBotones.add(btnRefrescar); pBotones.add(btnAprobar); pBotones.add(btnRechazar);
+        p.add(pBotones, BorderLayout.SOUTH);
+
+        Runnable cargarDatos = () -> {
+            mdl.setRowCount(0);
+            for (Requisito r : sis.getCatalogoRequisitos()) {
+                mdl.addRow(new Object[]{r.getId(), r.getEvento().getNombre(), r.getNombreRecurso(), r.getTipo(), r.getCantidadRequerida(), r.getEstado(), r.getCantidadAprobada()});
+            }
+        };
+
+        btnRefrescar.addActionListener(e -> cargarDatos.run());
+
+        btnAprobar.addActionListener(e -> {
+            int row = t.getSelectedRow();
+            if (row == -1) return;
             try {
-                Evento ev = sis.buscarEventoPorId(Integer.parseInt(txtIdEv.getText()));
-                if (ev == null) throw new VoluntariadoException("Evento no encontrado.");
-                Requisito req = new Requisito(ev, txtNomReq.getText(), (TipoRequisito)cbxTipo.getSelectedItem(), (int)spCant.getValue());
-                sis.agregarRequisito(req);
-                JOptionPane.showMessageDialog(p, "Requisito guardado.");
-
-                mdl.setRowCount(0); // Refresca tabla
-                for (Requisito r : sis.getRequisitosPorEvento(ev.getId())) {
-                    mdl.addRow(new Object[]{r.getEvento().getNombre(), r.getNombreRecurso(), r.getTipo(), r.getCantidadRequerida()});
+                int idReq = (int) mdl.getValueAt(row, 0);
+                int cantSolicitada = (int) mdl.getValueAt(row, 4);
+                String input = JOptionPane.showInputDialog(p, "Solicitado: " + cantSolicitada + "\nCantidad a AUTORIZAR:");
+                if (input != null && !input.trim().isEmpty()) {
+                    sis.gestionarRequisito(idReq, Enums.EstadoRequisito.APROBADO, Integer.parseInt(input));
+                    JOptionPane.showMessageDialog(p, "Autorizado.");
+                    cargarDatos.run();
                 }
             } catch (Exception ex) { JOptionPane.showMessageDialog(p, ex.getMessage(), "Error", JOptionPane.ERROR_MESSAGE); }
         });
 
-        return p;
-    }
-
-    private static JPanel panelAsistencia(Usuario coordinador) {
-        JPanel p = new JPanel(new BorderLayout());
-        DefaultTableModel mdl = new DefaultTableModel(new String[]{"ID Insc.", "Voluntario", "Evento", "Presente"}, 0) {
-            @Override public Class<?> getColumnClass(int col) { return col == 3 ? Boolean.class : String.class; }
-            @Override public boolean isCellEditable(int r, int c) { return c == 3; }
-        };
-        JTable t = new JTable(mdl); p.add(new JScrollPane(t), BorderLayout.CENTER);
-
-        JPanel pTop = new JPanel();
-        JButton btnCargar = new JButton("Cargar Aprobados"), btnGuardar = new JButton("Registrar Asistencia en BD");
-        pTop.add(btnCargar); pTop.add(btnGuardar); p.add(pTop, BorderLayout.NORTH);
-
-        btnCargar.addActionListener(e -> {
-            mdl.setRowCount(0);
-            for(Inscripcion i : sis.getHistorialCompleto()) {
-                if (i.getEstado() == Enums.EstadoInscripcion.APROBADA) {
-                    mdl.addRow(new Object[]{i.getId(), i.getVoluntario().getNombreCompleto(), i.getEvento().getNombre(), false});
-                }
-            }
+        btnRechazar.addActionListener(e -> {
+            int row = t.getSelectedRow();
+            if (row == -1) return;
+            try {
+                sis.gestionarRequisito((int) mdl.getValueAt(row, 0), Enums.EstadoRequisito.RECHAZADO, 0);
+                JOptionPane.showMessageDialog(p, "Rechazado.");
+                cargarDatos.run();
+            } catch (Exception ex) { JOptionPane.showMessageDialog(p, ex.getMessage(), "Error", JOptionPane.ERROR_MESSAGE); }
         });
 
-        btnGuardar.addActionListener(e -> {
-            for (int i = 0; i < t.getRowCount(); i++) {
-                if ((Boolean) t.getValueAt(i, 3)) {
-                    sis.registrarAsistenciaAuditable((int) t.getValueAt(i, 0), coordinador.getNombreCompleto());
-                }
-            }
-            JOptionPane.showMessageDialog(p, "Registros de asistencia guardados con fecha y hora exacta.");
-            btnCargar.doClick();
-        });
-        return p;
-    }
-
-    // --- DEMÁS PANELES (Reportes, CRUD Eventos, Inscripciones, Voluntario) ---
-    // (Estos se mantienen exactamente iguales a la versión que te di en el mensaje anterior,
-    // pero ya integrados bajo esta misma clase AppGUI).
-
-    private static JPanel panelReportes() {
-        JPanel p = new JPanel(new BorderLayout());
-        DefaultTableModel mdl = new DefaultTableModel(new String[]{"ID", "Evento", "Fecha", "Cupos", "Aprobados"}, 0);
-        JTable t = new JTable(mdl); p.add(new JScrollPane(t), BorderLayout.CENTER);
-        JButton btn = new JButton("Generar Reporte"); p.add(btn, BorderLayout.SOUTH);
-        btn.addActionListener(e -> {
-            mdl.setRowCount(0);
-            for (Evento ev : sis.getEventosDisponibles()) {
-                long apr = sis.getHistorialCompleto().stream().filter(i -> i.getEvento().getId() == ev.getId() && i.getEstado() == Enums.EstadoInscripcion.APROBADA).count();
-                mdl.addRow(new Object[]{ev.getId(), ev.getNombre(), ev.getFecha(), ev.getCuposTotales(), apr});
-            }
-        });
+        cargarDatos.run();
         return p;
     }
 
     private static JPanel panelCRUDEventos() {
         JPanel p = new JPanel(new GridLayout(8, 2, 5, 5));
         JTextField txtId = new JTextField(); txtId.setEditable(false);
-        JTextField txtNom = new JTextField(), txtLug = new JTextField(), txtFec = new JTextField("2026-06-30");
+        JTextField txtNom = new JTextField(), txtLug = new JTextField(), txtFec = new JTextField(LocalDate.now().plusDays(1).toString());
         JTextField txtIni = new JTextField("08:00"), txtFin = new JTextField("12:00");
         JSpinner spCupos = new JSpinner(new SpinnerNumberModel(20, 1, 500, 1));
 
@@ -236,6 +247,42 @@ public class AppGUI {
         return p;
     }
 
+    private static JPanel panelRequisitos() {
+        JPanel p = new JPanel(new BorderLayout());
+        JPanel pForm = new JPanel(new GridLayout(3, 4, 5, 5));
+        JTextField txtIdEv = new JTextField(), txtNomReq = new JTextField();
+        JComboBox<Enums.TipoRequisito> cbxTipo = new JComboBox<>(Enums.TipoRequisito.values());
+        JSpinner spCant = new JSpinner(new SpinnerNumberModel(1, 1, 100, 1));
+        JButton btnGuardar = new JButton("Añadir Requisito");
+
+        pForm.add(new JLabel(" ID Evento:")); pForm.add(txtIdEv);
+        pForm.add(new JLabel(" Recurso (Ej. Palas):")); pForm.add(txtNomReq);
+        pForm.add(new JLabel(" Tipo:")); pForm.add(cbxTipo);
+        pForm.add(new JLabel(" Cantidad:")); pForm.add(spCant);
+        pForm.add(new JLabel()); pForm.add(new JLabel()); pForm.add(new JLabel()); pForm.add(btnGuardar);
+
+        p.add(pForm, BorderLayout.NORTH);
+
+        DefaultTableModel mdl = new DefaultTableModel(new String[]{"Evento", "Recurso", "Tipo", "Cantidad", "Estado"}, 0);
+        JTable t = new JTable(mdl); p.add(new JScrollPane(t), BorderLayout.CENTER);
+
+        btnGuardar.addActionListener(e -> {
+            try {
+                Evento ev = sis.buscarEventoPorId(Integer.parseInt(txtIdEv.getText()));
+                if (ev == null) throw new VoluntariadoException("Evento no encontrado.");
+                sis.agregarRequisito(new Requisito(ev, txtNomReq.getText(), (Enums.TipoRequisito)cbxTipo.getSelectedItem(), (int)spCant.getValue()));
+                JOptionPane.showMessageDialog(p, "Requisito guardado.");
+
+                mdl.setRowCount(0);
+                for (Requisito r : sis.getRequisitosPorEvento(ev.getId())) {
+                    mdl.addRow(new Object[]{r.getEvento().getNombre(), r.getNombreRecurso(), r.getTipo(), r.getCantidadRequerida(), r.getEstado()});
+                }
+            } catch (Exception ex) { JOptionPane.showMessageDialog(p, ex.getMessage(), "Error", JOptionPane.ERROR_MESSAGE); }
+        });
+
+        return p;
+    }
+
     private static JPanel panelInscripciones() {
         JPanel p = new JPanel(new BorderLayout());
         DefaultListModel<Inscripcion> mdl = new DefaultListModel<>(); JList<Inscripcion> lista = new JList<>(mdl);
@@ -248,6 +295,39 @@ public class AppGUI {
         bOk.addActionListener(e -> { try{ sis.procesarInscripcion(true); ref.run(); }catch(Exception ex){ JOptionPane.showMessageDialog(p, ex.getMessage()); }});
         bNo.addActionListener(e -> { try{ sis.procesarInscripcion(false); ref.run(); }catch(Exception ex){ JOptionPane.showMessageDialog(p, ex.getMessage()); }});
         bDes.addActionListener(e -> { try{ sis.deshacerAccion(); ref.run(); }catch(Exception ex){ JOptionPane.showMessageDialog(p, ex.getMessage()); }});
+        return p;
+    }
+
+    private static JPanel panelAsistencia(Usuario coordinador) {
+        JPanel p = new JPanel(new BorderLayout());
+        DefaultTableModel mdl = new DefaultTableModel(new String[]{"ID Insc.", "Voluntario", "Evento", "Presente"}, 0) {
+            @Override public Class<?> getColumnClass(int col) { return col == 3 ? Boolean.class : String.class; }
+            @Override public boolean isCellEditable(int r, int c) { return c == 3; }
+        };
+        JTable t = new JTable(mdl); p.add(new JScrollPane(t), BorderLayout.CENTER);
+
+        JPanel pTop = new JPanel();
+        JButton btnCargar = new JButton("Cargar Aprobados"), btnGuardar = new JButton("Registrar Asistencia en BD");
+        pTop.add(btnCargar); pTop.add(btnGuardar); p.add(pTop, BorderLayout.NORTH);
+
+        btnCargar.addActionListener(e -> {
+            mdl.setRowCount(0);
+            for(Inscripcion i : sis.getHistorialCompleto()) {
+                if (i.getEstado() == Enums.EstadoInscripcion.APROBADA) {
+                    mdl.addRow(new Object[]{i.getId(), i.getVoluntario().getNombreCompleto(), i.getEvento().getNombre(), false});
+                }
+            }
+        });
+
+        btnGuardar.addActionListener(e -> {
+            for (int i = 0; i < t.getRowCount(); i++) {
+                if ((Boolean) t.getValueAt(i, 3)) {
+                    sis.registrarAsistenciaAuditable((int) t.getValueAt(i, 0), coordinador.getNombreCompleto());
+                }
+            }
+            JOptionPane.showMessageDialog(p, "Registros de asistencia guardados.");
+            btnCargar.doClick();
+        });
         return p;
     }
 
@@ -271,25 +351,6 @@ public class AppGUI {
                 JOptionPane.showMessageDialog(p, "Solicitud en cola.");
             } catch (Exception ex) { JOptionPane.showMessageDialog(p, ex.getMessage(), "Error", JOptionPane.ERROR_MESSAGE); }
         });
-        return p;
-    }
-
-    private static JPanel panelGestionRequisitosAdmin() {
-        JPanel p = new JPanel(new BorderLayout());
-        DefaultTableModel mdl = new DefaultTableModel(new String[]{"ID", "Evento", "Recurso", "Solicitado", "Estado", "Autorizado"}, 0);
-        JTable t = new JTable(mdl);
-
-        // Botones de acción
-        JButton btnAprobar = new JButton("Aprobar Parcial/Total");
-        btnAprobar.addActionListener(e -> {
-            int row = t.getSelectedRow();
-            int cant = Integer.parseInt(JOptionPane.showInputDialog("Cantidad a autorizar:"));
-            sis.gestionarRequisito((int)t.getValueAt(row, 0), Enums.EstadoRequisito.APROBADO, cant);
-            JOptionPane.showMessageDialog(p, "Recurso gestionado.");
-        });
-
-        p.add(new JScrollPane(t), BorderLayout.CENTER);
-        p.add(btnAprobar, BorderLayout.SOUTH);
         return p;
     }
 }

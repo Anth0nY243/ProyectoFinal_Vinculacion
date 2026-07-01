@@ -17,7 +17,7 @@ public class RegistroAsistencia implements Serializable {
     public RegistroAsistencia(Inscripcion inscripcionAsociada, String coordinadorResponsable) {
         this.id = generadorId++;
         this.inscripcionAsociada = inscripcionAsociada;
-        this.horaLlegada = LocalDateTime.now(); // Marca la hora exacta en la que se le toma lista
+        this.horaLlegada = LocalDateTime.now();
         this.coordinadorResponsable = coordinadorResponsable;
     }
 

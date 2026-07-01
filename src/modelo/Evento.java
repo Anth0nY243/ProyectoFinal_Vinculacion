@@ -24,15 +24,12 @@ public class Evento implements Serializable {
         this.tipoRecurso = recurso; this.cantidadRecurso = cantRecurso;
     }
 
-    // ==========================================
-    // GETTERS Y SETTERS COMPLETOS
-    // ==========================================
+
     public int getId() { return id; }
 
     public String getNombre() { return nombre; }
     public void setNombre(String nombre) { this.nombre = nombre; }
 
-    // AQUÍ ESTÁ EL MÉTODO QUE FALTABA
     public String getLugar() { return lugar; }
     public void setLugar(String lugar) { this.lugar = lugar; }
 
